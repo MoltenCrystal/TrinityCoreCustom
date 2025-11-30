@@ -142,12 +142,13 @@ enum DruidSpells
     SPELL_DRUID_TRAVEL_FORM                    = 783,
     SPELL_DRUID_TREE_OF_LIFE                   = 33891,
     SPELL_DRUID_THRASH_BEAR                    = 77758,
-    SPELL_DRUID_THRASH_BEAR_AURA               = 192090,
+    SPELL_DRUID_THRASH_BEAR_BLEED              = 192090,
     SPELL_DRUID_THRASH_CAT                     = 106830,
     SPELL_DRUID_TWIN_MOONS                     = 279620,
     SPELL_DRUID_TWIN_MOONS_EFFECT              = 281847,
     SPELL_DRUID_TWIN_MOONFIRE                  = 372567,
     SPELL_DRUID_THRASH_PULVERIZE_TRIGGER       = 158790,
+    SPELL_DRUID_THRASH_CAT_BLEED               = 405233,
     SPELL_DRUID_UMBRAL_EMBRACE                 = 393763,
     SPELL_DRUID_UMBRAL_INSPIRATION_TALENT      = 450418,
     SPELL_DRUID_UMBRAL_INSPIRATION_AURA        = 450419,
@@ -1664,7 +1665,7 @@ class spell_dru_pulverize : public SpellScript
 {
     bool Validate(SpellInfo const* spellInfo) override
     {
-        return ValidateSpellInfo({ SPELL_DRUID_THRASH_BEAR_AURA })
+        return ValidateSpellInfo({ SPELL_DRUID_THRASH_BEAR_BLEED })
             && ValidateSpellEffect({ { spellInfo->Id, EFFECT_2 } });
     }
 
@@ -1675,7 +1676,7 @@ class spell_dru_pulverize : public SpellScript
 
         int32 stacksToRemove = GetEffectInfo(EFFECT_2).CalcValue(caster);
 
-        Aura* bleedAura = target->GetAura(SPELL_DRUID_THRASH_BEAR_AURA, caster->GetGUID());
+        Aura* bleedAura = target->GetAura(SPELL_DRUID_THRASH_BEAR_BLEED, caster->GetGUID());
         if (!bleedAura)
             return;
 
@@ -1697,7 +1698,7 @@ class spell_dru_pulverize_thrash : public SpellScript
     {
         return ValidateSpellInfo
         ({
-            SPELL_DRUID_THRASH_BEAR_AURA,
+            SPELL_DRUID_THRASH_BEAR_BLEED,
             SPELL_DRUID_PULVERIZE,
             SPELL_DRUID_THRASH_PULVERIZE_TRIGGER
         })
@@ -1714,7 +1715,7 @@ class spell_dru_pulverize_thrash : public SpellScript
         Unit* caster = GetCaster();
         Unit* target = GetHitUnit();
 
-        Aura* bleedAura = target->GetAura(SPELL_DRUID_THRASH_BEAR_AURA, caster->GetGUID());
+        Aura* bleedAura = target->GetAura(SPELL_DRUID_THRASH_BEAR_BLEED, caster->GetGUID());
         if (!bleedAura)
             return;
 
@@ -2240,22 +2241,30 @@ class spell_dru_t10_restoration_4p_bonus_dummy : public AuraScript
     }
 };
 
-// 77758 - Thrash
+// 77758 - Thrash (Bear Form)
+// 106830 - Thrash (Cat Form)
 class spell_dru_thrash : public SpellScript
 {
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_DRUID_THRASH_BEAR_AURA });
+        return ValidateSpellInfo
+        ({
+            SPELL_DRUID_THRASH_BEAR_BLEED,
+            SPELL_DRUID_THRASH_CAT_BLEED
+        });
     }
 
     void HandleOnHitTarget(SpellEffIndex /*effIndex*/)
     {
-        if (Unit* hitUnit = GetHitUnit())
-        {
-            Unit* caster = GetCaster();
+        Unit* caster = GetCaster();
+        Unit* target = GetHitUnit();
 
-            caster->CastSpell(hitUnit, SPELL_DRUID_THRASH_BEAR_AURA, TRIGGERED_FULL_MASK);
-        }
+        // Decide by the casting spell id (works even when triggered out of form, e.g. Convoke)
+        uint32 bleedSpell = (GetSpellInfo()->Id == SPELL_DRUID_THRASH_CAT)
+            ? SPELL_DRUID_THRASH_CAT_BLEED
+            : SPELL_DRUID_THRASH_BEAR_BLEED;
+
+        caster->CastSpell(target, bleedSpell);
     }
 
     void Register() override
@@ -2264,24 +2273,31 @@ class spell_dru_thrash : public SpellScript
     }
 };
 
-// 192090 - Thrash (Aura) - SPELL_DRUID_THRASH_BEAR_AURA
-class spell_dru_thrash_aura : public AuraScript
+// 192090 - Thrash (Bear Bleed)
+class spell_dru_thrash_bear_bleed : public AuraScript
 {
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_DRUID_BLOOD_FRENZY_AURA, SPELL_DRUID_BLOOD_FRENZY_RAGE_GAIN });
+        return ValidateSpellInfo
+        ({
+            SPELL_DRUID_BLOOD_FRENZY_AURA,
+            SPELL_DRUID_BLOOD_FRENZY_RAGE_GAIN
+        });
     }
 
     void HandlePeriodic(AuraEffect const* /*aurEff*/)
     {
-        if (Unit* caster = GetCaster())
-            if (caster->HasAura(SPELL_DRUID_BLOOD_FRENZY_AURA))
-                caster->CastSpell(caster, SPELL_DRUID_BLOOD_FRENZY_RAGE_GAIN, true);
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+
+        if (caster->HasAura(SPELL_DRUID_BLOOD_FRENZY_AURA))
+            caster->CastSpell(caster, SPELL_DRUID_BLOOD_FRENZY_RAGE_GAIN, true);
     }
 
     void Register() override
     {
-        OnEffectPeriodic += AuraEffectPeriodicFn(spell_dru_thrash_aura::HandlePeriodic, EFFECT_0, SPELL_AURA_PERIODIC_DAMAGE);
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_dru_thrash_bear_bleed::HandlePeriodic, EFFECT_0, SPELL_AURA_PERIODIC_DAMAGE);
     }
 };
 
@@ -2827,7 +2843,7 @@ void AddSC_druid_spell_scripts()
     RegisterSpellScript(spell_dru_t10_restoration_4p_bonus);
     RegisterSpellScript(spell_dru_t10_restoration_4p_bonus_dummy);
     RegisterSpellScript(spell_dru_thrash);
-    RegisterSpellScript(spell_dru_thrash_aura);
+    RegisterSpellScript(spell_dru_thrash_bear_bleed);
     RegisterSpellScript(spell_dru_travel_form);
     RegisterSpellAndAuraScriptPair(spell_dru_travel_form_dummy, spell_dru_travel_form_dummy_aura);
     RegisterSpellAndAuraScriptPair(spell_dru_tiger_dash, spell_dru_tiger_dash_aura);
